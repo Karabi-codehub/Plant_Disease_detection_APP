@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Plant Disease Intelligence</title>
+
+    <!-- Tailwind -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+
+<body class="bg-gray-900 text-white">
+
+<div class="max-w-7xl mx-auto p-8">
+
+    <!-- Header -->
+    <header class="mb-8">
+        <h1 class="text-4xl font-bold text-green-400">
+            🌿 Plant Disease Intelligence
+        </h1>
+        <p class="text-gray-300 mt-2 text-lg">
+            AI-powered diagnosis, confidence scoring & treatment guidance
+        </p>
+    </header>
+
+    <!-- Upload + Login -->
+    <div class="glass-card p-6 mb-8 grid md:grid-cols-2 gap-6">
+
+        <!-- Upload -->
+        <div>
+            <label class="block mb-2 font-semibold">Upload Leaf Image</label>
+            <input type="file" id="file" accept="image/*"
+                   class="block w-full text-black rounded"
+                   onchange="previewImage(event)" />
+
+            <img id="preview"
+                 class="mt-4 rounded-xl hidden border border-gray-700"/>
+
+            <button class="btn-primary w-full mt-4" onclick="submitForm()">
+                🚀 Run AI Diagnosis
+            </button>
+
+            <button onclick="clearImage()" class="text-red-400 text-sm mt-2">
+                ❌ Remove Image
+            </button>
+
+            <p class="text-gray-400 text-sm mt-2">
+                Supports JPG, PNG • Powered by EfficientNet
+            </p>
+        </div>
+
+        <!-- Login -->
+        <div>
+            <h2 class="text-xl font-bold mb-3">🔑 User Login</h2>
+            <input type="text" id="username" placeholder="Username"
+                   class="block w-full mb-2 p-2 rounded text-black"/>
+            <input type="password" id="password" placeholder="Password"
+                   class="block w-full mb-4 p-2 rounded text-black"/>
+            <button class="btn-primary w-full mb-4" onclick="loginUser()">
+                Login
+            </button>
+
+            <h3 class="text-lg font-semibold mb-2">🕒 Previous Predictions</h3>
+            <ul id="historyList"
+                class="text-gray-300 text-sm list-disc pl-5 max-h-64 overflow-y-auto">
+            </ul>
+        </div>
+    </div>
+
+    <!-- Result -->
+    <div id="result" class="glass-card p-6 hidden fade-in">
+
+        <h2 class="text-2xl font-bold text-green-300 mb-2" id="prediction"></h2>
+
+        <!-- Confidence -->
+        <div class="mb-4">
+            <div class="flex justify-between text-sm mb-1">
+                <span>Confidence</span>
+                <span id="confidenceText"></span>
+            </div>
+            <div class="confidence-bar">
+                <div id="confidenceFill" class="confidence-fill"></div>
+            </div>
+        </div>
+
+        <!-- Inference -->
+        <div class="mb-4">
+            <span class="text-gray-300">Inference Time:</span>
+            <span id="inferenceTime" class="font-semibold"></span>
+        </div>
+
+        <!-- Risk -->
+        <div class="mb-4">
+            <span class="badge" id="riskBadge"></span>
+        </div>
+
+        <!-- Description -->
+        <p class="text-gray-300 mb-2" id="description"></p>
+        <p class="text-green-300 font-semibold mb-4" id="treatment"></p>
+
+        <!-- Top 5 -->
+        <h3 class="text-xl font-bold mb-3">🔍 Other Possible Predictions</h3>
+        <table class="w-full text-sm border border-gray-700 rounded">
+            <thead class="bg-gray-800">
+            <tr>
+                <th class="p-2 text-left">Disease</th>
+                <th class="p-2 text-right">Confidence</th>
+            </tr>
+            </thead>
+            <tbody id="top5Table" class="bg-gray-900"></tbody>
+        </table>
+
+        <!-- Charts -->
+        <div class="mt-8 grid md:grid-cols-2 gap-6">
+
+            <div class="glass-card p-4">
+                <h3 class="text-xl font-bold mb-3">📊 Confidence Distribution</h3>
+                <canvas id="barChart" height="220"></canvas>
+            </div>
+
+        </div>
+    </div>
+
+    <footer class="footer mt-12">
+        Built with ❤️ using FastAPI • Deep Learning • TailwindCSS
+    </footer>
+
+</div>
+
+<script>
+/* ------------------ Preview ------------------ */
+function previewImage(event) {
+    const img = document.getElementById("preview");
+    img.src = URL.createObjectURL(event.target.files[0]);
+    img.classList.remove("hidden");
+}
+/* ------------------ Clear ------------------ */
+function clearImage() {
+    document.getElementById("file").value = "";
+    document.getElementById("preview").classList.add("hidden");
+    document.getElementById("result").classList.add("hidden");
+}
+/* ------------------ Submit ------------------ */
+let chartInstance = null;
+async function submitForm() {
+    const file = document.getElementById("file").files[0];
+    if (!file) return alert("Upload an image first");
+    const formData = new FormData();
+    formData.append("file", file);
+    const start = performance.now();
+    const res = await fetch("/predict", { method: "POST", body: formData });
+    const data = await res.json();
+    const end = performance.now();
+    document.getElementById("result").classList.remove("hidden");
+    document.getElementById("prediction").innerText = data.prediction;
+    document.getElementById("confidenceText").innerText = data.confidence + "%";
+    document.getElementById("confidenceFill").style.width = data.confidence + "%";
+    const badge = document.getElementById("riskBadge");
+    badge.innerText = data.risk + " RISK";
+    badge.className = "badge badge-" + data.risk.toLowerCase();
+    document.getElementById("description").innerText = data.description;
+    document.getElementById("treatment").innerText = data.treatment;
+    document.getElementById("inferenceTime").innerText =
+        ((end - start) / 1000).toFixed(2) + " sec";
+    // History
+    document.getElementById("historyList").innerHTML +=
+        `<li>${data.prediction} - ${data.confidence}%</li>`;
+    // Top-5 table
+    const table = document.getElementById("top5Table");
+    table.innerHTML = "";
+    data.top5.forEach(row => {
+        table.innerHTML += `
+        <tr class="border-t border-gray-700">
+            <td class="p-2">${row.class}</td>
+            <td class="p-2 text-right">${(row.probability * 100).toFixed(2)}%</td>
+        </tr>`;
+    });
+    // Bar chart
+    const ctx = document.getElementById("barChart");
+    if (chartInstance) chartInstance.destroy();
+    chartInstance = new Chart(ctx, {
+        type: "bar",
+        data: {
+            labels: data.top5.map(x => x.class),
+            datasets: [{
+                data: data.top5.map(x => (x.probability * 100).toFixed(2)),
+                backgroundColor: "#10B981"
+            }]
+        },
+        options: {
+            plugins: { legend: { display: false } },
+            scales: { y: { beginAtZero: true } }
+        }
+    });
+}
+/* ------------------ Login (demo) ------------------ */
+function loginUser() {
+    const user = document.getElementById("username").value;
+    const pass = document.getElementById("password").value;
+    if (!user || !pass) return alert("Enter username & password");
+    alert("Logged in as " + user);
+}
+</script>
+
+</body>
+</html>
